@@ -1,9 +1,10 @@
 //! [`BoardId`]
 
-use std::{io::{self, Read, Write, IoSlice}, fs::File, fmt::Display};
-
+#![forbid(missing_docs, unsafe_code)]
 #[cfg(not(target_os = "linux"))] compile_error!("Only Linux is supported for the time being.");
-#[forbid(missing_docs, unsafe_code)]
+
+use std::{io::{self, Read}, fs::File, fmt::Display};
+
 
 /// Motherboard ID.
 #[derive(Debug, Hash, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -21,35 +22,41 @@ pub struct BoardId {
 impl BoardId {
     /// Attempts to detect the [`BoardId`].
     pub fn detect() -> io::Result<Self> {
-        let mut content = [0;512];
-        let content = {
-            let read = File::open("/sys/devices/virtual/dmi/id/modalias")?.read(&mut content)?;
-            &content[..read]
-        };
+        let mut buffer = [0u8; 254];
+        let mut buffer_write = buffer.as_mut_slice();
 
-        // https://elixir.bootlin.com/linux/latest/source/drivers/firmware/dmi-id.c#L92
-        const BOARD_VENDOR : [u8;3] = *b"rvn";
-        const BOARD_NAME   : [u8;2] = *b"rn" ;
-        const BOARD_VERSION: [u8;3] = *b"rvr";
-
-        let mut vendor  = Default::default();
-        let mut name    = Default::default();
-        let mut version = Default::default();
-
-        for part in content.split(|&b| b == b':') {
-            if part.starts_with(&BOARD_VENDOR) {
-                vendor = &part[BOARD_VENDOR.len()..];
-            } else if part.starts_with(&BOARD_NAME) {
-                name = &part[BOARD_NAME.len()..];
-            } else if part.starts_with(&BOARD_VERSION) {
-                version = &part[BOARD_VERSION.len()..];
+        fn read(buffer: &mut [u8], path: &str) -> io::Result<usize> {
+            let mut n = 0;
+            let mut file = match File::open(path) {
+                Ok(file) => file,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(0),
+                Err(e) => return Err(e),
+            };
+            loop {
+                let m = file.read(buffer)?;
+                if m == 0 { break } else { n += m }
             }
+            Ok(n)
         }
 
-        let mut buffer = [0u8; 254];
-        let version = buffer.as_mut_slice().write_vectored(&[IoSlice::new(vendor), IoSlice::new(name), IoSlice::new(version)])? as u8;
-        let vendor = vendor.len() as u8;
-        let name = vendor + name.len() as u8;
+        let mut vendor = read(buffer_write, "/sys/class/dmi/id/board_vendor")?;
+        if vendor > 0 {
+            vendor -= 1; // remove trailing NL
+            buffer_write = &mut buffer_write[vendor..];
+        }
+        let mut name = read(buffer_write, "/sys/class/dmi/id/board_name")?;
+        if name > 0 {
+            name -= 1; // remove trailing NL
+            buffer_write = &mut buffer_write[name..];
+        }
+        let mut version = read(buffer_write, "/sys/class/dmi/id/board_version")?;
+        if version > 0 {
+            version -= 1; // remove trailing NL
+        }
+
+        let vendor  = vendor           as u8;
+        let name    = vendor + name    as u8;
+        let version =   name + version as u8;
         Ok(Self { buffer, vendor, name, version })
     }
 

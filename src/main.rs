@@ -1,5 +1,1 @@
-use board_id::BoardId;
-
-fn main() {
-    println!("{}", BoardId::detect().unwrap());
-}
+fn main() { println!("{}", board_id::BoardId::detect().unwrap()); }
