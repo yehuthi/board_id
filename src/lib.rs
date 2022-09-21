@@ -81,14 +81,10 @@ impl BoardId {
 
 /// Semi-opinionated Display implementation.
 ///
-/// It only displays a part if the previous part was detected:
-/// - If we know every part it will say "{vendor} {name} {version}"
-/// - If we don't know the version it will say "{vendor} {name}"
-/// - If we don't know the name it will say "{vendor} motherboard"
-/// - If we don't know anything it will say "undetected motherboard"
-///
-/// The rationale is that it's somewhat silly and rarely helpful to say things
-/// like "undetected motherboard 1.0".
+/// - Has the format "<vendor> <name> <version>".
+/// - If it has vendor without name it will say "<vendor> motherboard".
+/// - Version is only shown if the name is detected (to avoid unhelpful messages like "undetected motherboard 1.0").
+/// - If no part has been detected it will say "undetected motherboard"
 ///
 /// All the [`MotherboardId`] field are assumed to be valid ASCII. Invalid ASCII characters will be
 /// escaped.
