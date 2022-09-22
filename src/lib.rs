@@ -112,16 +112,20 @@ impl Display for BoardId {
             true
         } else { false };
 
-        if let Some(name) = self.name() {
+        let detected_name = if let Some(name) = self.name() {
             write!(f, "{}", name.escape_ascii())?;
+            true
         } else if wrote_vendor {
             write!(f, "motherboard")?;
+            false
         } else {
             return write!(f, "undetected motherboard");
-        }
+        };
 
-        if let Some(version) = self.version() {
-            write!(f, " {}", version.escape_ascii())?;
+        if detected_name {
+            if let Some(version) = self.version() {
+                write!(f, " {}", version.escape_ascii())?;
+            }
         }
 
         Ok(())
