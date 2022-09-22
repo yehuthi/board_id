@@ -131,3 +131,86 @@ impl Display for BoardId {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const NOENT: Option<&[u8]> = None;
+
+    mod from_streams {
+        use super::*;
+
+        #[test]
+        fn none() {
+            let result = BoardId::from_streams(NOENT, NOENT, NOENT).unwrap();
+            assert_eq!( result.vendor(), None);
+            assert_eq!(   result.name(), None);
+            assert_eq!(result.version(), None);
+        }
+
+        #[test]
+        fn all_streams() {
+            let result = BoardId::from_streams(Some("VENDOR\n".as_bytes()), Some("NAME\n".as_bytes()), Some("VERSION\n".as_bytes())).unwrap();
+            assert_eq!( result.vendor(), Some("VENDOR" .as_bytes()));
+            assert_eq!(   result.name(), Some("NAME"   .as_bytes()));
+            assert_eq!(result.version(), Some("VERSION".as_bytes()));
+        }
+
+        #[test]
+        fn no_version() {
+            let result = BoardId::from_streams(Some("VENDOR\n".as_bytes()), Some("NAME\n".as_bytes()), None::<&[u8]>).unwrap();
+            assert_eq!( result.vendor(), Some("VENDOR".as_bytes()));
+            assert_eq!(   result.name(), Some("NAME"  .as_bytes()));
+            assert_eq!(result.version(), None                     );
+        }
+
+        #[test]
+        fn only_name() {
+            let result = BoardId::from_streams(NOENT, Some("NAME\n".as_bytes()), NOENT).unwrap();
+            assert_eq!( result.vendor(), None                   );
+            assert_eq!(   result.name(), Some("NAME".as_bytes()));
+            assert_eq!(result.version(), None                   );
+        }
+    }
+
+    mod format {
+        use super::*;
+
+        #[test]
+        fn undetected() {
+            let board = BoardId::from_streams(NOENT, NOENT, NOENT).unwrap();
+            assert_eq!(board.to_string(), "undetected motherboard");
+        }
+
+        #[test]
+        fn only_vendor() {
+            let board = BoardId::from_streams(Some("VENDOR\n".as_bytes()), NOENT, NOENT).unwrap();
+            assert_eq!(board.to_string(), "VENDOR motherboard");
+        }
+
+        #[test]
+        fn vendor_and_version() {
+            let board = BoardId::from_streams(Some("VENDOR\n".as_bytes()), NOENT, Some("VERSION\n".as_bytes())).unwrap();
+            assert_eq!(board.to_string(), "VENDOR motherboard");
+        }
+
+        #[test]
+        fn only_version() {
+            let board = BoardId::from_streams(NOENT, NOENT, Some("VERSION".as_bytes())).unwrap();
+            assert_eq!(board.to_string(), "undetected motherboard");
+        }
+
+        #[test]
+        fn full() {
+            let board = BoardId::from_streams(Some("VENDOR\n".as_bytes()), Some("NAME\n".as_bytes()), Some("VERSION\n".as_bytes())).unwrap();
+            assert_eq!(board.to_string(), "VENDOR NAME VERSION");
+        }
+
+        #[test]
+        fn only_name() {
+            let board = BoardId::from_streams(NOENT, Some("NAME\n".as_bytes()), NOENT).unwrap();
+            assert_eq!(board.to_string(), "NAME");
+        }
+    }
+}
