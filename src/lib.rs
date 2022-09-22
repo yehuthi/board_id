@@ -146,6 +146,14 @@ mod test {
         }
 
         #[test]
+        fn empty_streams() {
+            let result = BoardId::from_streams(Some("\n".as_bytes()), Some("\n".as_bytes()), Some("\n".as_bytes())).unwrap();
+            assert_eq!( result.vendor(), None);
+            assert_eq!(   result.name(), None);
+            assert_eq!(result.version(), None);
+        }
+
+        #[test]
         fn all_streams() {
             let result = BoardId::from_streams(Some("VENDOR\n".as_bytes()), Some("NAME\n".as_bytes()), Some("VERSION\n".as_bytes())).unwrap();
             assert_eq!( result.vendor(), Some("VENDOR" .as_bytes()));
