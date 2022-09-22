@@ -40,6 +40,7 @@ impl BoardId {
     /// respective part with a trailing NL.
     fn from_streams(vendor: Option<impl Read>, name: Option<impl Read>, version: Option<impl Read>) -> io::Result<Self> {
         let mut buffer = [0u8; 254];
+        let buffer_len = buffer.len();
         let mut buffer_write = buffer.as_mut_slice();
 
         fn read(buffer: &mut [u8], mut stream: impl Read) -> io::Result<usize> {
@@ -51,14 +52,18 @@ impl BoardId {
             Ok(n.saturating_sub(1)) // remove trailing NL
         }
 
+        let buffer_overflow_err = || io::Error::new(io::ErrorKind::WriteZero, "the motherboard ID is abnormally large and doesn't fit in the buffer");
+
         let vendor = if let Some(vendor) = vendor {
             let read = read(buffer_write, vendor)?;
+            if read >= buffer_len { return Err(buffer_overflow_err()) }
             buffer_write = &mut buffer_write[read..];
             read
         } else { 0 };
 
         let name = if let Some(name) = name {
             let read = read(buffer_write, name)?;
+            if read >= buffer_len { return Err(buffer_overflow_err()) }
             buffer_write = &mut buffer_write[read..];
             read
         } else { 0 };
@@ -66,6 +71,7 @@ impl BoardId {
         let version = if let Some(version) = version {
             read(buffer_write, version)?
         } else { 0 };
+        if version >= buffer_len { return Err(buffer_overflow_err()) }
 
         let vendor  = vendor           as u8;
         let name    = vendor + name    as u8;
@@ -175,6 +181,24 @@ mod test {
             assert_eq!( result.vendor(), None                   );
             assert_eq!(   result.name(), Some("NAME".as_bytes()));
             assert_eq!(result.version(), None                   );
+        }
+
+        mod buffer {
+            use super::*;
+
+            #[test]
+            fn id_too_large() {
+                let e = BoardId::from_streams(NOENT, Some("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin hendrerit molestie lacinia. Fusce sit amet pellentesque velit, sit amet vehicula massa. Ut nulla ex, aliquet a tortor non, convallis tincidunt arcu. In semper vel tellus id ornare. Lorem velit\n".as_bytes()), NOENT)
+                    .unwrap_err();
+                assert_eq!(e.kind(), io::ErrorKind::WriteZero);
+            }
+
+            #[test]
+            fn version_too_large() {
+                let e = BoardId::from_streams(NOENT, NOENT, Some("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin hendrerit molestie lacinia. Fusce sit amet pellentesque velit, sit amet vehicula massa. Ut nulla ex, aliquet a tortor non, convallis tincidunt arcu. In semper vel tellus id ornare. Lorem velit\n".as_bytes()))
+                    .unwrap_err();
+                assert_eq!(e.kind(), io::ErrorKind::WriteZero);
+            }
         }
     }
 
