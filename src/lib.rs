@@ -3,7 +3,7 @@
 #![forbid(missing_docs, unsafe_code)]
 #[cfg(not(target_os = "linux"))] compile_error!("Only Linux is supported for the time being.");
 
-use std::{io::{self, Read}, fs::File, fmt::Display};
+use std::{io::{self, Read}, fs::File, fmt::Display, path::Path};
 
 
 /// Motherboard ID.
@@ -22,37 +22,54 @@ pub struct BoardId {
 impl BoardId {
     /// Attempts to detect the [`BoardId`].
     pub fn detect() -> io::Result<Self> {
+        /// Opens a file, returning `Ok(None)` if it doesn't exist.
+        fn open_existing_file(path: impl AsRef<Path>) -> io::Result<Option<File>> {
+            match File::open(path) {
+                Ok(file) => Ok(Some(file)),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(e),
+            }
+        }
+        macro_rules! dmi { ($part:expr) => { open_existing_file(concat!("/sys/class/dmi/id/board_", $part)) }; }
+        Self::from_streams(dmi!("vendor")?, dmi!("name")?, dmi!("version")?)
+    }
+
+    /// Attempts to detect the [`BoardId`] from stream IDs.
+    ///
+    /// The streams are expected to have the format of the `/sys/class/dmi/id/board_*` files, i.e. contain just their
+    /// respective part with a trailing NL.
+    fn from_streams(vendor: Option<impl Read>, name: Option<impl Read>, version: Option<impl Read>) -> io::Result<Self> {
         let mut buffer = [0u8; 254];
         let mut buffer_write = buffer.as_mut_slice();
 
-        fn read(buffer: &mut [u8], path: &str) -> io::Result<usize> {
+        fn read(buffer: &mut [u8], mut stream: impl Read) -> io::Result<usize> {
             let mut n = 0;
-            let mut file = match File::open(path) {
-                Ok(file) => file,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(0),
-                Err(e) => return Err(e),
-            };
             loop {
-                let m = file.read(buffer)?;
+                let m = stream.read(buffer)?;
                 if m == 0 { break } else { n += m }
             }
             Ok(n)
         }
 
-        let mut vendor = read(buffer_write, "/sys/class/dmi/id/board_vendor")?;
-        if vendor > 0 {
-            vendor -= 1; // remove trailing NL
-            buffer_write = &mut buffer_write[vendor..];
-        }
-        let mut name = read(buffer_write, "/sys/class/dmi/id/board_name")?;
-        if name > 0 {
-            name -= 1; // remove trailing NL
-            buffer_write = &mut buffer_write[name..];
-        }
-        let mut version = read(buffer_write, "/sys/class/dmi/id/board_version")?;
-        if version > 0 {
-            version -= 1; // remove trailing NL
-        }
+        let vendor = if let Some(vendor) = vendor {
+            let mut read = read(buffer_write, vendor)?;
+            read = read.saturating_sub(1); // remove trailing NL
+            buffer_write = &mut buffer_write[read..];
+            read
+        } else { 0 };
+
+        let name = if let Some(name) = name {
+            let mut read = read(buffer_write, name)?;
+            read = read.saturating_sub(1); // remove trailing nl
+            buffer_write = &mut buffer_write[read..];
+            read
+        } else { 0 };
+
+        let version = if let Some(version) = version {
+            let read = read(buffer_write, version)?;
+            read.saturating_sub(1) // remove trailing nl
+        } else { 0 };
+
 
         let vendor  = vendor           as u8;
         let name    = vendor + name    as u8;
