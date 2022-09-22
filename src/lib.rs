@@ -48,28 +48,24 @@ impl BoardId {
                 let m = stream.read(buffer)?;
                 if m == 0 { break } else { n += m }
             }
-            Ok(n)
+            Ok(n.saturating_sub(1)) // remove trailing NL
         }
 
         let vendor = if let Some(vendor) = vendor {
-            let mut read = read(buffer_write, vendor)?;
-            read = read.saturating_sub(1); // remove trailing NL
+            let read = read(buffer_write, vendor)?;
             buffer_write = &mut buffer_write[read..];
             read
         } else { 0 };
 
         let name = if let Some(name) = name {
-            let mut read = read(buffer_write, name)?;
-            read = read.saturating_sub(1); // remove trailing nl
+            let read = read(buffer_write, name)?;
             buffer_write = &mut buffer_write[read..];
             read
         } else { 0 };
 
         let version = if let Some(version) = version {
-            let read = read(buffer_write, version)?;
-            read.saturating_sub(1) // remove trailing nl
+            read(buffer_write, version)?
         } else { 0 };
-
 
         let vendor  = vendor           as u8;
         let name    = vendor + name    as u8;
