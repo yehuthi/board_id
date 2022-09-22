@@ -42,7 +42,6 @@ impl BoardId {
     /// respective part with a trailing NL.
     fn from_streams(vendor: Option<impl Read>, name: Option<impl Read>, version: Option<impl Read>) -> io::Result<Self> {
         let mut buffer = [0u8; Self::BUFSZ];
-        let mut buffer_write = buffer.as_mut_slice();
 
         fn read(buffer: &mut [u8], mut stream: impl Read) -> io::Result<usize> {
             let mut n = 0;
@@ -53,31 +52,25 @@ impl BoardId {
             Ok(n.saturating_sub(1)) // remove trailing NL
         }
 
-        let buffer_overflow_err = || io::Error::new(io::ErrorKind::WriteZero, "the motherboard ID is abnormally large and doesn't fit in the buffer");
+        let check_buffer_overflow = |read_count: usize| -> io::Result<()> {
+            if read_count > Self::BUFSZ { 
+              Err(io::Error::new(io::ErrorKind::WriteZero, "the motherboard ID is abnormally large and doesn't fit in the buffer"))
+            } else { Ok(()) }
+        };
 
-        let vendor = if let Some(vendor) = vendor {
-            let read = read(buffer_write, vendor)?;
-            if read >= Self::BUFSZ { return Err(buffer_overflow_err()) }
-            buffer_write = &mut buffer_write[read..];
-            read
-        } else { 0 };
+        let vendor_count = vendor.map_or(Ok(0), |r| read(&mut buffer, r))?;
+        check_buffer_overflow(vendor_count)?;
+        let name_count = name.map_or(Ok(0), |r| read(&mut buffer[vendor_count..], r))?;
+        check_buffer_overflow(vendor_count + name_count)?;
+        let version_count = version.map_or(Ok(0), |r| read(&mut buffer[vendor_count + name_count..], r))?;
+        check_buffer_overflow(vendor_count + name_count + version_count)?;
 
-        let name = if let Some(name) = name {
-            let read = read(buffer_write, name)?;
-            if read >= Self::BUFSZ { return Err(buffer_overflow_err()) }
-            buffer_write = &mut buffer_write[read..];
-            read
-        } else { 0 };
-
-        let version = if let Some(version) = version {
-            read(buffer_write, version)?
-        } else { 0 };
-        if version >= Self::BUFSZ { return Err(buffer_overflow_err()) }
-
-        let vendor  = vendor           as u8;
-        let name    = vendor + name    as u8;
-        let version =   name + version as u8;
-        Ok(Self { buffer, vendor, name, version })
+        Ok(Self {
+            buffer,
+            vendor: vendor_count as u8,
+            name: (vendor_count + name_count) as u8,
+            version: (vendor_count + name_count + version_count) as u8,
+        })
     }
 
     /// Gets the board's vendor / brand.
