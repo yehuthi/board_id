@@ -10,7 +10,7 @@ use std::{io::{self, Read}, fs::File, fmt::Display, path::Path};
 #[derive(Debug, Hash, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub struct BoardId {
     /// The data buffer.
-    buffer: [u8; 254],
+    buffer: [u8; Self::BUFSZ],
     /// The count of bytes for the vendor part.
     vendor: u8,
     /// The exclusive end for the name part.
@@ -20,6 +20,8 @@ pub struct BoardId {
 }
 
 impl BoardId {
+    const BUFSZ: usize = 254;
+
     /// Attempts to detect the [`BoardId`].
     pub fn detect() -> io::Result<Self> {
         /// Opens a file, returning `Ok(None)` if it doesn't exist.
@@ -39,8 +41,7 @@ impl BoardId {
     /// The streams are expected to have the format of the `/sys/class/dmi/id/board_*` files, i.e. contain just their
     /// respective part with a trailing NL.
     fn from_streams(vendor: Option<impl Read>, name: Option<impl Read>, version: Option<impl Read>) -> io::Result<Self> {
-        let mut buffer = [0u8; 254];
-        let buffer_len = buffer.len();
+        let mut buffer = [0u8; Self::BUFSZ];
         let mut buffer_write = buffer.as_mut_slice();
 
         fn read(buffer: &mut [u8], mut stream: impl Read) -> io::Result<usize> {
@@ -56,14 +57,14 @@ impl BoardId {
 
         let vendor = if let Some(vendor) = vendor {
             let read = read(buffer_write, vendor)?;
-            if read >= buffer_len { return Err(buffer_overflow_err()) }
+            if read >= Self::BUFSZ { return Err(buffer_overflow_err()) }
             buffer_write = &mut buffer_write[read..];
             read
         } else { 0 };
 
         let name = if let Some(name) = name {
             let read = read(buffer_write, name)?;
-            if read >= buffer_len { return Err(buffer_overflow_err()) }
+            if read >= Self::BUFSZ { return Err(buffer_overflow_err()) }
             buffer_write = &mut buffer_write[read..];
             read
         } else { 0 };
@@ -71,7 +72,7 @@ impl BoardId {
         let version = if let Some(version) = version {
             read(buffer_write, version)?
         } else { 0 };
-        if version >= buffer_len { return Err(buffer_overflow_err()) }
+        if version >= Self::BUFSZ { return Err(buffer_overflow_err()) }
 
         let vendor  = vendor           as u8;
         let name    = vendor + name    as u8;
