@@ -1,4 +1,4 @@
-//! [`BoardId`]
+//! [`BoardId`] detection.
 
 #![forbid(missing_docs, unsafe_code)]
 #[cfg(not(target_os = "linux"))] compile_error!("Only Linux is supported for the time being.");

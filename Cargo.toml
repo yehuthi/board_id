@@ -1,4 +1,9 @@
 [package]
 name = "board_id"
 version = "0.1.0"
+description = "motherboard detection (Linux-only)"
+authors = ["Yehuthi <yehuthith@gmail.com>"]
+repository = "https://github.com/yehuthi/board_id"
+keywords = ["motherboard", "board", "hardware", "detect", "detection"]
+categories = ["hardware-support", "os", "os::linux-apis"]
 edition = "2021"
