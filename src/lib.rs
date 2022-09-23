@@ -5,13 +5,12 @@
 
 use std::{io::{self, Read}, fs::File, fmt::Display, path::Path};
 
-
 /// Motherboard ID.
 #[derive(Debug, Hash, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub struct BoardId {
     /// The data buffer.
     buffer: [u8; Self::BUFSZ],
-    /// The count of bytes for the vendor part.
+    /// The exclusive end for the vendor part.
     vendor: u8,
     /// The exclusive end for the name part.
     name: u8,
@@ -20,7 +19,8 @@ pub struct BoardId {
 }
 
 impl BoardId {
-    const BUFSZ: usize = 254;
+    /// The buffer size.
+    const BUFSZ: usize = u8::MAX as usize;
 
     /// Attempts to detect the [`BoardId`].
     pub fn detect() -> io::Result<Self> {
@@ -38,37 +38,38 @@ impl BoardId {
 
     /// Attempts to detect the [`BoardId`] from stream IDs.
     ///
-    /// The streams are expected to have the format of the `/sys/class/dmi/id/board_*` files, i.e. contain just their
-    /// respective part with a trailing NL.
+    /// The streams are expected to have the format of the `/sys/class/dmi/id/board_*` files,
+    /// i.e. contain just their respective part with a trailing NL.
+    ///
+    /// There's no intermediary buffer for efficiency, so this makes the buffer size effectively
+    /// be `Self::BUFSZ - 2`, which hardly matters.
+    /// The buffer size is reduced by two because when the input exactly fits, the last byte is
+    /// going to be NL. And we need a spare byte so we'll have room to read and see if we reached
+    /// EOF.
     fn from_streams(vendor: Option<impl Read>, name: Option<impl Read>, version: Option<impl Read>) -> io::Result<Self> {
         let mut buffer = [0u8; Self::BUFSZ];
 
         fn read(buffer: &mut [u8], mut stream: impl Read) -> io::Result<usize> {
             let mut n = 0;
             loop {
-                let m = stream.read(buffer)?;
+                let buf = &mut buffer[n..];
+                if buf.is_empty() {
+                    return Err(io::Error::new(io::ErrorKind::WriteZero, "the motherboard ID is abnormally large and doesn't fit in the buffer"))
+                }
+                let m = stream.read(buf)?;
                 if m == 0 { break } else { n += m }
             }
             Ok(n.saturating_sub(1)) // remove trailing NL
         }
 
-        let check_buffer_overflow = |read_count: usize| -> io::Result<()> {
-            if read_count > Self::BUFSZ { 
-              Err(io::Error::new(io::ErrorKind::WriteZero, "the motherboard ID is abnormally large and doesn't fit in the buffer"))
-            } else { Ok(()) }
-        };
-
-        let vendor_count = vendor.map_or(Ok(0), |r| read(&mut buffer, r))?;
-        check_buffer_overflow(vendor_count)?;
-        let name_count = name.map_or(Ok(0), |r| read(&mut buffer[vendor_count..], r))?;
-        check_buffer_overflow(vendor_count + name_count)?;
+        let vendor_count  = vendor .map_or(Ok(0), |r| read(&mut buffer,                              r))?;
+        let name_count    = name   .map_or(Ok(0), |r| read(&mut buffer[vendor_count..],              r))?;
         let version_count = version.map_or(Ok(0), |r| read(&mut buffer[vendor_count + name_count..], r))?;
-        check_buffer_overflow(vendor_count + name_count + version_count)?;
 
         Ok(Self {
             buffer,
-            vendor: vendor_count as u8,
-            name: (vendor_count + name_count) as u8,
+             vendor:  vendor_count                               as u8,
+               name: (vendor_count + name_count                ) as u8,
             version: (vendor_count + name_count + version_count) as u8,
         })
     }
@@ -181,17 +182,21 @@ mod test {
             use super::*;
 
             #[test]
-            fn id_too_large() {
-                let e = BoardId::from_streams(NOENT, Some("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin hendrerit molestie lacinia. Fusce sit amet pellentesque velit, sit amet vehicula massa. Ut nulla ex, aliquet a tortor non, convallis tincidunt arcu. In semper vel tellus id ornare. Lorem velit\n".as_bytes()), NOENT)
-                    .unwrap_err();
+            fn name_too_large() {
+                let name = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque ut nisi dignissim, sodales leo id, euismod dolor. Curabitur justo sem, aliquam aliquet purus ut, feugiat sagittis justo. Curabitur vel lobortis tortor. Vivamus at porttitor mi eleifend";
+                assert_eq!(name.len(), BoardId::BUFSZ - 1, "bad test");
+                let e = BoardId::from_streams(NOENT, Some(format!("{name}\n").as_bytes()), NOENT).unwrap_err();
                 assert_eq!(e.kind(), io::ErrorKind::WriteZero);
             }
 
             #[test]
-            fn version_too_large() {
-                let e = BoardId::from_streams(NOENT, NOENT, Some("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin hendrerit molestie lacinia. Fusce sit amet pellentesque velit, sit amet vehicula massa. Ut nulla ex, aliquet a tortor non, convallis tincidunt arcu. In semper vel tellus id ornare. Lorem velit\n".as_bytes()))
-                    .unwrap_err();
-                assert_eq!(e.kind(), io::ErrorKind::WriteZero);
+            fn name_exact_fit() {
+                let name = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque ut nisi dignissim, sodales leo id, euismod dolor. Curabitur justo sem, aliquam aliquet purus ut, feugiat sagittis justo. Curabitur vel lobortis tortor. Vivamus at portitor mi eleifend";
+                assert_eq!(name.len(), BoardId::BUFSZ - 2, "bad test");
+                let board = BoardId::from_streams(NOENT, Some(format!("{name}\n").as_bytes()), NOENT).unwrap();
+                assert_eq!( board.vendor(), None                 );
+                assert_eq!(   board.name(), Some(name.as_bytes()));
+                assert_eq!(board.version(), None                 );
             }
         }
     }
