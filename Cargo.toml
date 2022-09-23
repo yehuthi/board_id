@@ -6,4 +6,5 @@ authors = ["Yehuthi <yehuthith@gmail.com>"]
 repository = "https://github.com/yehuthi/board_id"
 keywords = ["motherboard", "board", "hardware", "detect", "detection"]
 categories = ["hardware-support", "os", "os::linux-apis"]
+license = "MIT OR Apache-2.0"
 edition = "2021"
